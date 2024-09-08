@@ -1,0 +1,294 @@
+<!DOCTYPE HTML>
+<html>
+   <head>
+      <style>
+         body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+         }
+
+         #sse {
+            margin-bottom: 20px;
+         }
+
+         .websocket-button, .clear-button {
+            display: inline-block;
+            padding: 10px 20px;
+            margin-right: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            text-decoration: none;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+         }
+
+         .websocket-button:hover, .clear-button:hover {
+            background-color: #45a049;
+         }
+
+         #send {
+            padding: 10px 20px;
+            background-color: #008CBA;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+         }
+
+         #send:hover {
+            background-color: #007bb5;
+         }
+
+         textarea {
+            width: 100%;
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            font-size: 16px;
+         }
+
+         #status {
+            font-weight: bold;
+            margin-bottom: 20px;
+         }
+
+         .clear-button {
+            background-color: #f44336;
+         }
+
+         .clear-button:hover {
+            background-color: #d32f2f;
+         }
+      </style>
+
+      <script type="text/javascript">
+		
+		// Use one of the following to compute CRC-16 (Modbus)
+		// Add the CRC to the message to test the implementation
+		// https://www.lammertbies.nl/comm/info/crc-calculation
+		// https://www.tahapaksu.com/crc/
+		// https://crccalc.com/?crc=AABBCCDDEEFF123456789&method=CRC-16/MODBUS&datatype=0&outtype=0
+		
+		// Output for ASCII string AABBCCDDEEFF123456789
+		// Result	Check	Poly	Init	RefIn	RefOut	XorOut
+		// 0x9675	0x4B37	0x8005	0xFFFF	true	true	0x0000
+
+		function crc16Update(crc, byte) {
+			for (let i = 0; i < 8; i++) {
+				if ((crc ^ byte) & 1) {
+					crc = (crc >> 1) ^ 0xA001;
+				} else {
+					crc >>= 1;
+				}
+				byte >>= 1;
+			}
+			return crc & 0xFFFF;
+		}
+
+		function crc16ForString(str) {
+			let crc = 0xFFFF; // Initialize CRC value
+
+			for (let i = 0; i < str.length; i++) {
+				let byte = str.charCodeAt(i) & 0xFF; // Get the byte value of the character
+				crc = crc16Update(crc, byte);
+			}
+
+			return crc;
+		}	
+		
+		function toHex(i) {
+			if (i < 0 || i > 15) {
+				throw new Error("Input must be between 0 and 15");
+			}
+			return i <= 9 ? String.fromCharCode('0'.charCodeAt(0) + i) : String.fromCharCode('A'.charCodeAt(0) - 10 + i);
+		}
+				
+		
+        var WebSocketClient = (function () {
+            var exports = {};
+            var is_connected = false;
+            var ws = null;
+
+            exports.init = function(url) {
+                // Check if a WebSocket connection is already open
+                if (is_connected) {
+                    console.log("WebSocket is already connected.");
+                    return; // Exit if a connection is already open
+                }
+
+                if (!("WebSocket" in window)) {
+                    throw "WebSocket NOT supported by your Browser!";
+                }
+
+                ws = new WebSocket(url);
+                ws.onopen = function() {
+                    is_connected = true;
+                    document.getElementById("status").textContent = "Connected";
+                    document.getElementById("status").style.color = "green";
+                    console.log("WebSocket connection opened.");
+
+                    if(exports.onOpen) {
+                       exports.onOpen();
+                    }
+                };
+
+                ws.onmessage = function (evt) {
+				    let received_data = evt.data;
+				    console.log("===========================================");
+                    console.log("Received data:", received_data);
+                    let data_len = received_data.length;
+                    console.log("Data len:     ", data_len);
+                    if (data_len < 4) {
+                        console.error("Received data is too short to contain a CRC.");
+                        return;
+                    }
+
+                    let messageSide = received_data.slice(0, -4);
+                    let CRCSide = received_data.slice(-4);
+                    
+                    console.log("Message Side: ", messageSide);
+                    console.log("CRC Side:     ", CRCSide);
+
+                    let computedCRC = crc16ForString(messageSide);
+
+                    computedCRC = computedCRC.toString(16).toUpperCase()
+
+                    console.log('Computed CRC: ', computedCRC);                       
+					
+//A32AF54FBBC677CDFEEA0A70
+					
+					// Convert hexadecimal strings to integers
+					let int_computedCRC = parseInt(computedCRC, 16);
+					let int_CRCSide = parseInt(CRCSide, 16);
+
+					// Error flag initialization: true if the two CRC values are equal
+					let errorFlag = (int_computedCRC === int_CRCSide);
+
+					// Log the error flag for debugging
+					console.log("errorFlag = ", errorFlag);
+
+					// Display message and CRC comparison result
+					let crcStatus = errorFlag ? "CRC-OK" : "CRC-ERROR";
+					document.getElementById("crc-status").textContent = `CRC Status: ${crcStatus}`;
+					document.getElementById("crc-status").style.color = errorFlag ? "green" : "red";
+
+					if (errorFlag) {
+                        console.log("CRC validation successful.");
+                    } else {
+                        console.log("CRC validation failed.");
+                    }
+
+                    if(exports.onMessage) {
+                        exports.onMessage(evt.data);
+                    }
+                };
+
+                ws.onerror = function (err) {
+                    is_connected = false;
+                    document.getElementById("status").textContent = "Error";
+                    document.getElementById("status").style.color = "red";
+                    console.error("WebSocket error: ", err);
+                    ws.close();
+                };
+
+                ws.onclose = function() {
+                    is_connected = false;
+                    document.getElementById("status").textContent = "Disconnected";
+                    document.getElementById("status").style.color = "red";
+                    console.log("Connection is closed...");
+                };
+            }
+
+            exports.close = function() {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.close();
+                    is_connected = false;
+                    console.log("Connection is closed...");
+                    location.reload(); // Reload the webpage after closing the WebSocket
+                } else {
+                    console.log("WebSocket is not open, cannot close.");
+                    location.reload(); // Reload the webpage if the WebSocket was not open
+                }
+            }
+            
+            exports.sendMessage = function (msg) {
+                if (is_connected) {
+                    ws.send(msg);
+                } else {
+                    alert("Not connected!");
+                }
+            };
+
+            exports.isConnected = function() {
+                return is_connected;
+            };
+
+            exports.onMessage = null;
+            exports.onOpen = null;
+            
+            return exports;
+        }());
+
+        // Check if connected
+        console.log(WebSocketClient.isConnected());
+
+        WebSocketClient.onOpen = function() {
+            let flag = function() {  
+                if (WebSocketClient.isConnected()) {                  
+                    WebSocketClient.sendMessage('A32AF54FBBC677CDFEEA');                   
+                }
+            };
+			
+            let intervalID = setInterval(flag, 2000);
+
+            WebSocketClient.onClose = function() {
+                //clearInterval(intervalID);
+                console.log("Interval cleared, WebSocket closed.");
+            };
+        };
+      </script>
+   </head>
+   <body>
+      <div id="status">Disconnected</div>
+      <div id="crc-status">CRC Status: Not Checked</div>
+	  
+      <div id="sse">
+         <a href="javascript:WebSocketClient.init('ws://192.168.1.10:8088/echo')" class="websocket-button">Run WebSocket</a>
+         <a href="javascript:WebSocketClient.close()" class="websocket-button">Close WebSocket</a>
+      </div>
+      
+      <div>
+         <textarea id="text-echo" rows="10" cols="40" readonly></textarea>
+         <button class="clear-button" onclick="document.getElementById('text-echo').value = '';">Clear Received</button>
+      </div>
+      
+      <div>
+         <textarea id="text" rows="10" cols="40"></textarea>
+         <button class="clear-button" onclick="document.getElementById('text').value = '';">Clear Input</button>
+      </div>
+      
+      <button id="send" value="send">Send</button>
+      
+      <script type="text/javascript">
+            WebSocketClient.onMessage = function(msg) {
+                //console.log("Message is received:", msg);
+                document.getElementById("text-echo").value += "\n" + msg;
+            }
+
+            document.getElementById("send").onclick = function() {
+                var text = document.getElementById("text").value;
+                if(text.length > 0) {
+                    console.log("text.length: ", text.length);
+                    WebSocketClient.sendMessage(text);
+                }
+            };
+      </script>
+   </body>
+</html>

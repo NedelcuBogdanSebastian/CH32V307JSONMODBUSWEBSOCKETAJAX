@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AJAX Example</title>
+    <script>
+        function sendData() {
+            // Create a new XMLHttpRequest object
+            var xhr = new XMLHttpRequest();
+
+            // Get data from input field
+            var dataToSend = document.getElementById('dataInput').value;
+
+            // Configure the request (GET request in this case)
+            //var url = 'http://localhost/echo?data=' + encodeURIComponent(dataToSend);
+			var url = 'http://192.168.1.10/echo?data=' + encodeURIComponent(dataToSend);
+
+            // Define what happens when the server responds
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4) {
+                    if (xhr.status === 200) {
+                        // Parse the JSON response
+                        var response = JSON.parse(xhr.responseText);
+
+                        // Update the response element with the server response
+                        document.getElementById('response').innerHTML = 'Server Response: ' + response.message + ' ' + response.data;
+                    } else {
+                        // Handle error response
+                        document.getElementById('response').innerHTML = 'Error: ' + xhr.status;
+                    }
+                }
+            };
+
+            // Open the request with GET method
+            xhr.open('GET', url, true);
+
+            // Send the request
+            xhr.send();
+        }
+    </script>
+</head>
+<body>
+    <h1>AJAX Example</h1>
+    
+    <label for="dataInput">Enter Data to Send to Server:</label>
+    <input type="text" id="dataInput" placeholder="Type something...">
+    
+    <button onclick="sendData()">Send Data</button>
+
+    <h2>Response from Server:</h2>
+    <div id="response"></div>
+</body>
+</html>
